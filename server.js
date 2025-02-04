@@ -3,7 +3,8 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const db = require("./config/dbBasis"); // Pakai db dari dbBasis.js
+const db = require("./config/dbBasis");
+const barangRoutes = require("./routes/barang");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,6 +43,8 @@ app.post("/login", (req, res) => {
       res.json({ token, role: user.role });
   });
 });
+
+app.use("/barang", barangRoutes);
 
 app.get("/", (req, res) => {
     res.send("API berjalan...");
