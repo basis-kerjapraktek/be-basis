@@ -1,4 +1,5 @@
 const mysql = require("mysql2");
+const bcrypt = require("bcrypt");
 require("dotenv").config();
 
 const db = mysql.createConnection({
@@ -8,18 +9,18 @@ const db = mysql.createConnection({
   database: process.env.DB_NAME || "asset_management",
 });
 
-db.connect((err) => {
+// Koneksi ke database
+ db.connect((err) => {
   if (err) {
     console.error("Database connection error:", err);
     return;
   }
   console.log("Connected to MySQL database!");
-  setupDatabase(); // Jalankan setup tabel
+  setupDatabase();
 });
 
 // Fungsi untuk membuat tabel
 function setupDatabase() {
-  // Tabel Barang
   const createBarangTable = `
     CREATE TABLE IF NOT EXISTS barang (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -34,7 +35,6 @@ function setupDatabase() {
     );
   `;
 
-  // Tabel Users
   const createUsersTable = `
     CREATE TABLE IF NOT EXISTS users (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -53,7 +53,7 @@ function setupDatabase() {
     if (err) {
       console.error("Error creating table `barang`:", err);
     } else {
-      console.log("Table `barang` ready to use!");
+      console.log("Table `barang` is ready!");
     }
   });
 
@@ -61,38 +61,39 @@ function setupDatabase() {
     if (err) {
       console.error("Error creating table `users`:", err);
     } else {
-      console.log("Table `users` ready to use!");
+      console.log("Table `users` is ready!");
+      seedDatabase();
     }
   });
+}
 
-  setTimeout(seedDatabase, 2000); // Jalankan seed data setelah 2 detik
+// Fungsi untuk hashing password
+function hashPassword(password) {
+  return bcrypt.hashSync(password, 10);
 }
 
 // Fungsi untuk mengisi data awal
 function seedDatabase() {
   console.log("Seeding database...");
 
-  // Seed data untuk users
   const insertUsers = `
     INSERT INTO users (user_id, name, phone, role, email, password)
-    VALUES
-      ('USR-001', 'Admin Basis', '08123456789', 'Admin', 'admin@basis.com', 'admin123'),
-      ('USR-002', 'Dika Setiawan', '08987654321', 'Karyawan', 'dika@basis.com', 'karyawan123'),
-      ('USR-003', 'Budi Santoso', '08129876543', 'Atasan', 'budi.atasan@basis.com', 'atasan123')
-    ON DUPLICATE KEY UPDATE name=name;
+    VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE 
+      name=VALUES(name),
+      phone=VALUES(phone),
+      role=VALUES(role),
+      email=VALUES(email),
+      password=VALUES(password);
   `;
 
-  // Seed data untuk barang
-  const insertBarang = `
-    INSERT INTO barang (code, name, stock_quantity, item_condition, status)
-    VALUES
-      ('BRG-001', 'Laptop Dell', 5, 'Baik', 'Tersedia'),
-      ('BRG-002', 'Monitor LG', 3, 'Baik', 'Tersedia'),
-      ('BRG-003', 'Mouse Logitech', 10, 'Baik', 'Tersedia')
-    ON DUPLICATE KEY UPDATE name=name;
-  `;
+  const usersData = [
+    'USR-001', 'Admin Basis', '08123456789', 'Admin', 'admin@basis.com', hashPassword('admin123'),
+    'USR-002', 'Dika Setiawan', '08987654321', 'Karyawan', 'dika@basis.com', hashPassword('karyawan123'),
+    'USR-003', 'Budi Santoso', '08129876543', 'Atasan', 'budi.atasan@basis.com', hashPassword('atasan123')
+  ];
 
-  db.query(insertUsers, (err) => {
+  db.query(insertUsers, usersData, (err) => {
     if (err) {
       console.error("Error inserting users:", err);
     } else {
@@ -100,7 +101,23 @@ function seedDatabase() {
     }
   });
 
-  db.query(insertBarang, (err) => {
+  const insertBarang = `
+    INSERT INTO barang (code, name, stock_quantity, item_condition, status)
+    VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE 
+      name=VALUES(name),
+      stock_quantity=VALUES(stock_quantity),
+      item_condition=VALUES(item_condition),
+      status=VALUES(status);
+  `;
+
+  const barangData = [
+    'BRG-001', 'Laptop Dell', 5, 'Baik', 'Tersedia',
+    'BRG-002', 'Monitor LG', 3, 'Baik', 'Tersedia',
+    'BRG-003', 'Mouse Logitech', 10, 'Baik', 'Tersedia'
+  ];
+
+  db.query(insertBarang, barangData, (err) => {
     if (err) {
       console.error("Error inserting barang:", err);
     } else {

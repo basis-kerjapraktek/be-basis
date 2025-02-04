@@ -5,51 +5,63 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("./config/dbBasis");
 const barangRoutes = require("./routes/barang");
+const util = require("util"); // Tambahkan util untuk promisify query
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// Promisify db.query agar bisa pakai async/await
+const query = util.promisify(db.query).bind(db);
+
+// Login endpoint
 app.post("/login", (req, res) => {
-  const { id, password } = req.body; // Pakai id, bukan username
-  console.log("Login attempt:", id, password);
+  const { user_id, password } = req.body; // Sesuaikan dengan frontend
 
-  const query = "SELECT * FROM users WHERE id = ?";
-  db.query(query, [id], async (err, results) => { // Tambah async di sini
-      console.log("Query result:", results);
-      if (err) return res.status(500).json({ message: "Server error" });
-      if (results.length === 0) return res.status(401).json({ message: "User not found" });
+  console.log("Login attempt:", user_id, password);
 
-      const user = results[0];
-      console.log("User found:", user);
+  const query = "SELECT * FROM users WHERE user_id = ?";
+  db.query(query, [user_id], async (err, results) => {
+    console.log("Query result:", results);
+    
+    if (err) return res.status(500).json({ message: "Server error" });
+    if (results.length === 0) return res.status(401).json({ message: "User not found" });
 
-      const passwordMatch = password === user.password; // Tanpa bcrypt
+    const user = results[0];
+    console.log("User found:", user);
 
-      console.log("Password match:", passwordMatch);
+    // Cek password pakai bcrypt.compare
+    const passwordMatch = await bcrypt.compare(password, user.password);
 
-      if (!passwordMatch) {
-          return res.status(401).json({ message: "Invalid credentials" });
-      }
+    console.log("Password match:", passwordMatch);
 
-      // Generate token
-      const token = jwt.sign(
-          { id: user.id, role: user.role },
-          process.env.JWT_SECRET,
-          { expiresIn: "1h" }
-      );
+    if (!passwordMatch) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
-      res.json({ token, role: user.role });
+    // Generate token
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.json({ token, role: user.role });
   });
 });
 
+// Gunakan routes barang
 app.use("/barang", barangRoutes);
 
+// Endpoint utama
 app.get("/", (req, res) => {
-    res.send("API berjalan...");
+  res.send("API berjalan...");
 });
 
+// Jalankan server
 app.listen(PORT, () => {
-    console.log(`Server berjalan di port ${PORT}`);
+  console.log(`Server berjalan di port ${PORT}`);
 });
