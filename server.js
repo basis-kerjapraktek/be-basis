@@ -3,9 +3,8 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const db = require("./config/dbBasis");
-const barangRoutes = require("./routes/barang");
-const util = require("util"); // Tambahkan util untuk promisify query
+const db = require("./config/dbBasis"); // Sudah menggunakan pool connection dengan .promise()
+const barangRoutes = require("./routes/barangRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,27 +12,36 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static("uploads")); 
 
-// Promisify db.query agar bisa pakai async/await
-const query = util.promisify(db.query).bind(db);
+// Gunakan routes barang
+app.use("/barang", barangRoutes);
+
 
 // Login endpoint
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { user_id, password } = req.body; // Sesuaikan dengan frontend
 
-  console.log("Login attempt:", user_id, password);
+  console.log("Login attempt:", user_id);
 
-  const query = "SELECT * FROM users WHERE user_id = ?";
-  db.query(query, [user_id], async (err, results) => {
-    console.log("Query result:", results);
-    
-    if (err) return res.status(500).json({ message: "Server error" });
-    if (results.length === 0) return res.status(401).json({ message: "User not found" });
+  try {
+    // Gunakan format yang benar untuk query dengan mysql2 promise
+    const [rows] = await db.query("SELECT * FROM users WHERE user_id = ?", [user_id]);
 
-    const user = results[0];
+    console.log("Query result:", rows);
+
+    if (rows.length === 0) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    const user = rows[0]; // Ambil user pertama dari hasil query
     console.log("User found:", user);
 
-    // Cek password pakai bcrypt.compare
+    if (!user.password) {
+      return res.status(500).json({ message: "Password field is missing in database!" });
+    }
+
+    // Cek password pakai bcrypt.compare()
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     console.log("Password match:", passwordMatch);
@@ -50,11 +58,11 @@ app.post("/login", (req, res) => {
     );
 
     res.json({ token, role: user.role });
-  });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 });
-
-// Gunakan routes barang
-app.use("/barang", barangRoutes);
 
 // Endpoint utama
 app.get("/", (req, res) => {

@@ -2,26 +2,26 @@ const mysql = require("mysql2");
 const bcrypt = require("bcrypt");
 require("dotenv").config();
 
-const db = mysql.createConnection({
+const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "asset_management",
-});
+  database: "asset_management",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  multipleStatements: true,
+};
 
-// Koneksi ke database
- db.connect((err) => {
-  if (err) {
-    console.error("Database connection error:", err);
-    return;
-  }
-  console.log("Connected to MySQL database!");
-  setupDatabase();
-});
+// Buat koneksi pool dengan promise
+const dbPool = mysql.createPool(dbConfig).promise();
+
+// Ekspor dbPool agar bisa digunakan di file lain
+module.exports = dbPool;
 
 // Fungsi untuk membuat tabel
-function setupDatabase() {
-  const createBarangTable = `
+async function setupDatabase(db) {
+  const createTablesQuery = `
     CREATE TABLE IF NOT EXISTS barang (
       id INT AUTO_INCREMENT PRIMARY KEY,
       code VARCHAR(10) NOT NULL UNIQUE,
@@ -33,9 +33,7 @@ function setupDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     );
-  `;
 
-  const createUsersTable = `
     CREATE TABLE IF NOT EXISTS users (
       id INT AUTO_INCREMENT PRIMARY KEY,
       user_id VARCHAR(20) NOT NULL UNIQUE,
@@ -47,24 +45,66 @@ function setupDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS peminjaman (
+      id_peminjaman VARCHAR(20) PRIMARY KEY,
+      id_user INT,
+      id_barang INT,
+      tgl_pinjam DATE NOT NULL,
+      tgl_kembali DATE NOT NULL,
+      status ENUM('Diproses', 'Disetujui', 'Ditolak', 'Dipinjam', 'Dikembalikan') NOT NULL,
+      FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (id_barang) REFERENCES barang(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS pengembalian (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      id_peminjaman VARCHAR(20) NOT NULL,
+      id_user INT NOT NULL,
+      id_barang INT NOT NULL,
+      tgl_pinjam DATE NOT NULL,
+      tgl_kembali DATE NOT NULL,
+      kondisi LONGBLOB, 
+      status ENUM('Dikembalikan', 'Terlambat', 'Hilang', 'Rusak') NOT NULL,
+      FOREIGN KEY (id_peminjaman) REFERENCES peminjaman(id_peminjaman) ON DELETE CASCADE,
+      FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (id_barang) REFERENCES barang(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS laporan_peminjaman (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      id_peminjaman VARCHAR(20) NOT NULL,
+      id_user INT NOT NULL,
+      id_barang INT NOT NULL,
+      tgl_pinjam DATE NOT NULL,
+      tgl_kembali DATE NOT NULL,
+      kondisi VARCHAR(50) NOT NULL,
+      status ENUM('Dipinjam', 'Dikembalikan', 'Terlambat', 'Hilang', 'Rusak') NOT NULL,
+      FOREIGN KEY (id_peminjaman) REFERENCES peminjaman(id_peminjaman) ON DELETE CASCADE,
+      FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (id_barang) REFERENCES barang(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS tanggapan (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      id_user INT NOT NULL,
+      kategori ENUM('Peminjaman', 'Pengembalian', 'Laporan') NOT NULL,
+      status ENUM('Belum dibaca', 'Diproses', 'Selesai') NOT NULL,
+      isi_tanggapan TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE
+    );
+
   `;
 
-  db.query(createBarangTable, (err) => {
-    if (err) {
-      console.error("Error creating table `barang`:", err);
-    } else {
-      console.log("Table `barang` is ready!");
-    }
-  });
-
-  db.query(createUsersTable, (err) => {
-    if (err) {
-      console.error("Error creating table `users`:", err);
-    } else {
-      console.log("Table `users` is ready!");
-      seedDatabase();
-    }
-  });
+  try {
+    await db.query(createTablesQuery);
+    console.log("Tables are ready!");
+    await seedUsers(db); // Mengisi data awal
+  } catch (error) {
+    console.error("Error setting up database:", error);
+  }
 }
 
 // Fungsi untuk hashing password
@@ -72,9 +112,9 @@ function hashPassword(password) {
   return bcrypt.hashSync(password, 10);
 }
 
-// Fungsi untuk mengisi data awal
-function seedDatabase() {
-  console.log("Seeding database...");
+// Fungsi untuk mengisi data awal hanya untuk tabel users
+async function seedUsers(db) {
+  console.log("Seeding users...");
 
   const insertUsers = `
     INSERT INTO users (user_id, name, phone, role, email, password)
@@ -93,37 +133,13 @@ function seedDatabase() {
     'USR-003', 'Budi Santoso', '08129876543', 'Atasan', 'budi.atasan@basis.com', hashPassword('atasan123')
   ];
 
-  db.query(insertUsers, usersData, (err) => {
-    if (err) {
-      console.error("Error inserting users:", err);
-    } else {
-      console.log("Users seeded successfully!");
-    }
-  });
-
-  const insertBarang = `
-    INSERT INTO barang (code, name, stock_quantity, item_condition, status)
-    VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE 
-      name=VALUES(name),
-      stock_quantity=VALUES(stock_quantity),
-      item_condition=VALUES(item_condition),
-      status=VALUES(status);
-  `;
-
-  const barangData = [
-    'BRG-001', 'Laptop Dell', 5, 'Baik', 'Tersedia',
-    'BRG-002', 'Monitor LG', 3, 'Baik', 'Tersedia',
-    'BRG-003', 'Mouse Logitech', 10, 'Baik', 'Tersedia'
-  ];
-
-  db.query(insertBarang, barangData, (err) => {
-    if (err) {
-      console.error("Error inserting barang:", err);
-    } else {
-      console.log("Barang seeded successfully!");
-    }
-  });
+  try {
+    await db.query(insertUsers, usersData);
+    console.log("Users seeded successfully!");
+  } catch (error) {
+    console.error("Error inserting users:", error);
+  }
 }
 
-module.exports = db;
+// Menjalankan setup database
+setupDatabase(dbPool);
