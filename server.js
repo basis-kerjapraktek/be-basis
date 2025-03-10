@@ -5,6 +5,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("./config/dbBasis"); // Sudah menggunakan pool connection dengan .promise()
 const barangRoutes = require("./routes/barangRoutes");
+const notifikasi = require("./routes/notifications")
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,7 +17,7 @@ app.use("/uploads", express.static("uploads"));
 
 // Gunakan routes barang
 app.use("/barang", barangRoutes);
-
+app.use("/notifications", notifikasi);
 
 // Login endpoint
 app.post("/login", async (req, res) => {
@@ -63,6 +64,18 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+//notification
+const notificationsRoutes = require("./routes/notifications");
+
+app.use("/api/notifications", notificationsRoutes);
+app.get("/notifications", (req, res) => {
+  res.json([
+    { id: 1, pesan: "Notifikasi pertama" },
+    { id: 2, pesan: "Notifikasi kedua" },
+  ]);
+});
+
 
 // Endpoint utama
 app.get("/", (req, res) => {
