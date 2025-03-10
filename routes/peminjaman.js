@@ -1,41 +1,38 @@
-const express = require('express');
-const mysql = require('mysql2');
-const cors = require('cors');
-
-const app = express();
-app.use(express.json());
-app.use(cors());
-
-// Konfigurasi koneksi database
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'asset_management'
-});
-
-db.connect(err => {
-    if (err) {
-        console.error('Database connection error:', err);
-    } else {
-        console.log('Connected to MySQL database');
-    }
-});
+const express = require("express");
+const { ajukanPeminjaman, setujuiPeminjaman } = require("../controllers/peminjamanControllers");
+const router = express.Router();
+const db = require("../config/dbBasis"); // Pastikan koneksi database sudah benar
 
 // Endpoint untuk mengambil daftar peminjaman (hanya untuk admin)
-app.get('/admin/peminjaman', (req, res) => {
-    const query = 'SELECT * FROM peminjaman';
-    db.query(query, (err, results) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-        } else {
-            res.json(results);
-        }
-    });
+router.get("/", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT * FROM peminjaman");
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Jalankan server
-const PORT = PORT;
-app.listen(PORT, () => {
-    console.log(`Server berjalan di port ${PORT}`);
+// Route untuk mengajukan peminjaman
+router.post("/ajukan", ajukanPeminjaman);
+
+// Route untuk menyetujui atau menolak peminjaman
+router.post("/setujui", setujuiPeminjaman);
+
+// Endpoint untuk memperbarui status peminjaman
+router.put("/:id", async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  try {
+    // Update status di database
+    await db.query("UPDATE peminjaman SET status = ? WHERE id_peminjaman = ?", [validasi, id]);
+
+    res.json({ message: "Status peminjaman berhasil diperbarui" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
+
+module.exports = router; // Pastikan ini yang diekspor!

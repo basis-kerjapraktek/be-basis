@@ -1,44 +1,42 @@
 const express = require("express");
-const mysql = require("mysql");
-const cors = require("cors");
+const router = express.Router();
+const db = require("../config/dbBasis"); // Menggunakan dbPool dengan promise
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "asset_management"
+// Route untuk mendapatkan semua laporan
+router.get("/all", async (req, res) => {
+  try {
+    const query = "SELECT id_peminjaman, tgl_pinjam, tgl_kembali, kondisi, status FROM laporan_peminjaman";
+    
+    const [results] = await db.query(query);
+    res.json(results);
+  } catch (error) {
+    console.error("Error fetching laporan: ", error);
+    res.status(500).json({ error: "Database query error" });
+  }
 });
 
-db.connect((err) => {
-  if (err) {
-    console.error("Database connection failed: " + err.stack);
-    return;
-  }
-  console.log("Connected to database.");
-});
+// Route untuk mendapatkan laporan berdasarkan bulan
+router.get("/", async (req, res) => {
+  let { bulan } = req.query;
+  bulan = parseInt(bulan); // Pastikan bulan adalah angka
 
-app.get("/laporan", (req, res) => {
-  const { bulan } = req.query;
-  let query = "SELECT * FROM laporan";
-  
-  if (bulan) {
-    query += ` WHERE MONTH(tgl_pinjam) = '${bulan}'`;
-  }
-  
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching laporan: ", err);
-      res.status(500).json({ error: "Database query error" });
-    } else {
-      res.json(results);
+  try {
+    let query = "SELECT id_peminjaman, tgl_pinjam, tgl_kembali, kondisi, status FROM laporan_peminjaman";
+    let params = [];
+
+    if (!isNaN(bulan)) {  
+      query += " WHERE MONTH(tgl_pinjam) = ?";
+      params.push(bulan);
     }
-  });
+
+    console.log("Running query:", query, "with params:", params); // Debugging
+
+    const [results] = await db.query(query, params);
+    res.json(results);
+  } catch (error) {
+    console.error("Error fetching laporan: ", error);
+    res.status(500).json({ error: "Database query error" });
+  }
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
-});
+module.exports = router;

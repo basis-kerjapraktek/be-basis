@@ -1,89 +1,71 @@
 const express = require("express");
-const cors = require("cors");
-const mysql = require("mysql2"); // Menggunakan mysql2 untuk async queries
 const multer = require("multer");
+const db = require("../config/dbBasis"); // Pastikan path sesuai dengan struktur proyek
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const router = express.Router();
 
-// Koneksi ke database
-const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "asset_management",
-});
-
-db.connect((err) => {
-  if (err) {
-    console.error("Database connection failed:", err);
-  } else {
-    console.log("Connected to database");
-  }
-});
-
-// Konfigurasi multer untuk upload gambar ke memori sebelum masuk database
+// Konfigurasi multer untuk upload gambar
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 /**
  * 1. Endpoint untuk mendapatkan semua data pengembalian (tanpa gambar)
  */
-app.get("/admin/pengembalian", (req, res) => {
-  const query = "SELECT id, id_peminjam, nama, barang, tgl_pinjam, tgl_kembali, status FROM pengembalian";
-  db.query(query, (err, results) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
+router.get("/", async (req, res) => {
+  try {
+    const query = "SELECT id, id_peminjaman, id_user, id_barang, tgl_pinjam, tgl_kembali, status FROM pengembalian";
+    
+    const [results] = await db.query(query);
+
     if (results.length === 0) {
       return res.json({ message: "Belum ada data pengembalian." });
     }
+    
     res.json(results);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
  * 2. Endpoint untuk menambahkan data pengembalian (dengan gambar kondisi)
  */
-app.post("/admin/pengembalian", upload.single("kondisi"), (req, res) => {
-  const { id_peminjam, nama, barang, tgl_pinjam, tgl_kembali, status } = req.body;
-  const kondisiImage = req.file ? req.file.buffer : null; // Simpan gambar sebagai buffer
+router.post("/", upload.single("kondisi"), async (req, res) => {
+  try {
+    const { id_peminjaman, id_user, id_barang, tgl_pinjam, tgl_kembali, kondisi, status } = req.body;
+    const kondisiImage = req.file ? req.file.buffer : null;
 
-  const query = `
-    INSERT INTO pengembalian (id_peminjam, nama, barang, tgl_pinjam, tgl_kembali, kondisi, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
-  
-  db.query(query, [id_peminjam, nama, barang, tgl_pinjam, tgl_kembali, kondisiImage, status], (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
+    const query = `
+      INSERT INTO pengembalian (id_peminjaman, id_user, id_barang, tgl_pinjam, tgl_kembali, kondisi, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await db.query(query, [id_peminjaman, id_user, id_barang, tgl_pinjam, tgl_kembali, kondisi, status]);
+
     res.status(201).json({ message: "Data pengembalian berhasil ditambahkan!" });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
  * 3. Endpoint untuk mengambil gambar kondisi berdasarkan ID
  */
-app.get("/admin/pengembalian/kondisi/:id", (req, res) => {
-  const { id } = req.params;
+router.get("/kondisi/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  db.query("SELECT kondisi FROM pengembalian WHERE id = ?", [id], (err, results) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
+    const [results] = await db.query("SELECT kondisi FROM pengembalian WHERE id = ?", [id]);
+
     if (results.length === 0 || !results[0].kondisi) {
       return res.status(404).json({ message: "Gambar kondisi tidak ditemukan." });
     }
 
-    res.setHeader("Content-Type", "image/png"); // Format gambar
+    res.setHeader("Content-Type", "image/png");
     res.send(results[0].kondisi);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Jalankan server
-const PORT = PORT;
-app.listen(PORT, () => {
-    console.log(`Server berjalan di port ${PORT}`);
-});
+module.exports = router;
